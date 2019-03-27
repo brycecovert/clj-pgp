@@ -2865,8 +2865,838 @@ net.brehaut.ClojureTools = (function (SH) {
     build_tree: build_tree
   };
 })(SyntaxHighlighter);
-</script><title>mvxcvi/clj-pgp -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name"><a href="https://github.com/greglook/clj-pgp">mvxcvi/clj-pgp</a></h1><h2 class="project-version">0.9.0</h2><br /><p>Wrapper for the Bouncy Castle OpenPGP library</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.8.0</td></tr><tr><td class="dep-name">org.bouncycastle/bcpg-jdk15on</td><td class="dotted"><hr /></td><td class="dep-version">1.58</td></tr><tr><td class="dep-name">org.bouncycastle/bcprov-jdk15on</td><td class="dotted"><hr /></td><td class="dep-version">1.58</td></tr><tr><td class="dep-name">byte-streams</td><td class="dotted"><hr /></td><td class="dep-version">0.2.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#clj-pgp.generate">clj-pgp.generate</a></li><li><a href="#clj-pgp.util">clj-pgp.util</a></li><li><a href="#clj-pgp.core">clj-pgp.core</a></li><li><a href="#clj-pgp.keyring">clj-pgp.keyring</a></li><li><a href="#clj-pgp.signature">clj-pgp.signature</a></li><li><a href="#clj-pgp.message">clj-pgp.message</a></li><li><a href="#clj-pgp.tags">clj-pgp.tags</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.generate" name="clj-pgp.generate"><h1 class="project-name">clj-pgp.generate</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>This namespace provides functionality to generate PGP keypairs and keyrings
+</script><title>mvxcvi/clj-pgp -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name"><a href="https://github.com/greglook/clj-pgp">mvxcvi/clj-pgp</a></h1><h2 class="project-version">0.10.0</h2><br /><p>Wrapper for the Bouncy Castle OpenPGP library</p>
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.10.0</td></tr><tr><td class="dep-name">org.bouncycastle/bcpg-jdk15on</td><td class="dotted"><hr /></td><td class="dep-version">1.61</td></tr><tr><td class="dep-name">org.bouncycastle/bcprov-jdk15on</td><td class="dotted"><hr /></td><td class="dep-version">1.61</td></tr><tr><td class="dep-name">byte-streams</td><td class="dotted"><hr /></td><td class="dep-version">0.2.4</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#clj-pgp.tags">clj-pgp.tags</a></li><li><a href="#clj-pgp.util">clj-pgp.util</a></li><li><a href="#clj-pgp.message">clj-pgp.message</a></li><li><a href="#clj-pgp.core">clj-pgp.core</a></li><li><a href="#clj-pgp.signature">clj-pgp.signature</a></li><li><a href="#clj-pgp.generate">clj-pgp.generate</a></li><li><a href="#clj-pgp.keyring">clj-pgp.keyring</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.tags" name="clj-pgp.tags"><h1 class="project-name">clj-pgp.tags</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Vars which map Cloure keywords to numeric BouncyCastle tag codes.</p>
+</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.tags
+  (:require
+    [clojure.string :as str])
+  (:import
+    (org.bouncycastle.bcpg
+      CompressionAlgorithmTags
+      HashAlgorithmTags
+      PublicKeyAlgorithmTags
+      SymmetricKeyAlgorithmTags)))</pre></td></tr><tr><td class="docs"><h2>Tag Functions</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Convert static 'tag' fields on the given class into a map of keywords to
+  numeric codes.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- map-tags
+  [^Class tags]
+  (let [field-&gt;entry
+        (fn [^java.lang.reflect.Field f]
+          (vector (-&gt; (.getName f)
+                      (str/replace \_ \-)
+                      .toLowerCase
+                      keyword)
+                  (.getInt f nil)))]
+    (-&gt;&gt; (.getFields tags)
+         (map field-&gt;entry)
+         (into {}))))</pre></td></tr><tr><td class="docs"><p>Coerce a value into a numeric tag code. The argument may be a keyword or a
+  number. If the tag map does not contain the value, an exception is thrown.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn tag-&gt;code
+  ^Integer
+  [tag-name tags value]
+  (cond
+    (keyword? value)
+    (if-let [code (tags value)]
+      code
+      (throw (IllegalArgumentException.
+               (str &quot;Invalid &quot; tag-name &quot; name &quot; value))))
+    (number? value)
+    (if (some #{value} (vals tags))
+      value
+      (throw (IllegalArgumentException.
+               (str &quot;Invalid &quot; tag-name &quot; code &quot; value))))
+    :else
+    (throw (IllegalArgumentException.
+             (str &quot;Unknown &quot; tag-name &quot; identifier: &quot; (pr-str value))))))</pre></td></tr><tr><td class="docs"><p>Look up the keyword for a tag from the numeric code.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn code-&gt;tag
+  [tags code]
+  (some #(if (= (val %) code) (key %)) tags))</pre></td></tr><tr><td class="docs"><h2>Tag Definitions</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Defines a tag map and coersion function from fields on the given class.</p>
+</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private deftags
+  [cls]
+  (let [tag-name (-&gt; (name cls)
+                     (as-&gt; s (subs s 0 (- (count s) 4)))
+                     (str/replace #&quot;([a-z])([A-Z])&quot; &quot;$1-$2&quot;)
+                     str/lower-case
+                     symbol)
+        tag-map (symbol (str tag-name &quot;-tags&quot;))]
+    `(do
+       (def ~tag-map
+         ~(str &quot;Map of &quot; tag-name &quot; tag codes.&quot;)
+         (map-tags ~cls))
+       (defn ~(symbol (str tag-name &quot;-code&quot;))
+         ~(str &quot;Validate and coerce the argument into a &quot; tag-name &quot; tag code.&quot;)
+         ^Integer
+         [~'value]
+         (tag-&gt;code ~(str tag-name) ~tag-map ~'value))
+       (defn ~(symbol (str tag-name &quot;-tag&quot;))
+         ~(str &quot;Validate and coerce the argument into a &quot; tag-name &quot; tag keyword.&quot;)
+         [~'value]
+         (code-&gt;tag ~tag-map (tag-&gt;code ~(str tag-name) ~tag-map ~'value))))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(deftags HashAlgorithmTags)
+(deftags CompressionAlgorithmTags)
+(deftags PublicKeyAlgorithmTags)
+(deftags SymmetricKeyAlgorithmTags)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.util" name="clj-pgp.util"><h1 class="project-name">clj-pgp.util</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Internal utility functions used by other namespaces.</p>
+</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.util)</pre></td></tr><tr><td class="docs"><p>Returns a collection from the arguments provided. If <code>args</code> is a
+  non-collection value, a single-element collection containing <code>args</code> is
+  returned.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn arg-coll
+  [args]
+  (if (and args (not (coll? args)))
+    (list args)
+    (seq args)))</pre></td></tr><tr><td class="docs"><p>Takes a sequence of args and returns a seq. If only one argument is given
+  and it is sequential, it is retured directly. Otherwise the seq of args is
+  returned. Returns nil for empty args.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn arg-seq
+  [args]
+  (if (and (= 1 (count args))
+           (sequential? (first args)))
+    (seq (first args))
+    (seq args)))</pre></td></tr><tr><td class="docs"><p>Takes a sequence of args and returns a map. If only one argument is given
+  and it is a map, it is retured directly. Otherwise the seq of args is treated
+  as keyword args and returned as a map.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn arg-map
+  [args]
+  (cond
+    (nil? args) nil
+    (map? args) args
+    (= 1 (count args)) (recur (first args))
+    :else (apply array-map args)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.message" name="clj-pgp.message"><h1 class="project-name">clj-pgp.message</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The functions in this namespace package raw data into PGP <em>messages</em>, which
+  can be compressed, encrypted, and signed.</p>
+
+<p>  The encryption functions use the concept of <em>encryptors</em> and <em>decryptors</em>.
+  A collection of encryptors may be used to encipher a message, and any
+  corresponding decryptor will be able to decipher it.</p>
+
+<p>  For symmetric encryption, the encryptor is the passphrase string and the
+  corresponding decryptor is the same string.</p>
+
+<p>  For public-key encryption, the encryptor is the public-key object and the
+  decryptor is the corresponding private-key. Alternately, the decryptor can be
+  a function which accepts a key id and returns the corresponding private-key,
+  to look it up or unlock the key on demand.</p>
+</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.message
+  (:require
+    [byte-streams :as bytes]
+    [clojure.java.io :as io]
+    (clj-pgp
+      [core :as pgp]
+      [tags :as tags]
+      [util :refer [arg-coll arg-map]]))
+  (:import
+    (java.io
+      ByteArrayOutputStream
+      FilterOutputStream
+      InputStream
+      OutputStream)
+    java.nio.ByteBuffer
+    java.security.SecureRandom
+    java.util.Date
+    (org.bouncycastle.bcpg
+      ArmoredOutputStream)
+    (org.bouncycastle.openpgp
+      PGPPBEEncryptedData
+      PGPCompressedData
+      PGPCompressedDataGenerator
+      PGPEncryptedData
+      PGPEncryptedDataGenerator
+      PGPEncryptedDataList
+      PGPLiteralData
+      PGPLiteralDataGenerator
+      PGPObjectFactory
+      PGPPublicKeyEncryptedData
+      PGPUtil)
+    (org.bouncycastle.openpgp.operator.bc
+      BcPGPDataEncryptorBuilder
+      BcPBEDataDecryptorFactory
+      BcPBEKeyEncryptionMethodGenerator
+      BcPGPDigestCalculatorProvider
+      BcPublicKeyDataDecryptorFactory
+      BcPublicKeyKeyEncryptionMethodGenerator)))</pre></td></tr><tr><td class="docs"><h2>Helpers</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Creates a new reducing function that merges the kvs onto the value passed
+  to the <code>rf</code></p>
+</td><td class="codes"><pre class="brush: clojure">(defn- with-reduce-attrs
+  [rf &amp; kvs]
+  (fn reducer
+    [acc value]
+    (rf acc (apply assoc value kvs))))</pre></td></tr><tr><td class="docs"><h2>PGP Data Encoding</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for packets of message data.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol ^:no-doc MessagePacket
+  (reduce-message
+    [data opts rf acc]
+    &quot;Recursively unpacks a message packet and calls `rf` with `acc` and the message as map.
+    See `reduce-messages` for the map structure and options&quot;)
+  (readable
+    [data opts]
+    &quot;Determines if the message packet can be read using the given options. Should return the
+    readable object itself if it's readable or nil if not.&quot;))</pre></td></tr><tr><td class="docs"><p>Decodes a sequence of PGP objects from an input stream, unpacking each
+  objects data.
+  See <code>reduce-messages</code> for options</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- reduce-content
+  [^InputStream input opts rf acc]
+  (reduce
+    #(reduce-message %2 opts rf %1)
+    acc
+    (pgp/read-objects input)))</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with an armored data stream. Packets written to this
+  stream will be output in ASCII encoded Base64.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn armored-data-stream
+  ^OutputStream
+  [^OutputStream output]
+  (ArmoredOutputStream. output))</pre></td></tr><tr><td class="docs"><h2>Literal Data Packets</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Supported data formats which can be specified when building literal data
+  packets.</p>
+</td><td class="codes"><pre class="brush: clojure">(def data-formats
+  {:binary PGPLiteralData/BINARY
+   :text   PGPLiteralData/TEXT
+   :utf8   PGPLiteralData/UTF8})</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with a literal data generator, returning another
+  stream. Typically, the wrapped stream is a compressed data stream or
+  encrypted data stream.</p>
+
+<p>  Data written to the returned stream will write a literal data packet to the
+  wrapped output stream. If the data is longer than the buffer size, the packet
+  is written in chunks in a streaming fashion.</p>
+
+<p>  Options may be provided to customize the packet:</p>
+
+<ul>
+<li><code>:buffer-size</code> maximum number of bytes per chunk</li>
+<li><code>:format</code>      data format type</li>
+<li><code>:filename</code>    filename string for the data</li>
+<li><code>:mtime</code>       data modification time</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(defn literal-data-stream
+  ^OutputStream
+  [^OutputStream output &amp; opts]
+  (let [{:keys [buffer-size format filename ^Date mtime]
+         :or {buffer-size 4096
+              format      :binary
+              filename    PGPLiteralData/CONSOLE
+              mtime       (Date.)}}
+        (arg-map opts)]
+    (.open (PGPLiteralDataGenerator.)
+           output
+           (char (data-formats format))
+           (str filename)
+           mtime
+           (byte-array buffer-size))))</pre></td></tr><tr><td class="docs"><p>Read the literal data bytes from the packet.</p>
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
+  PGPLiteralData
+
+  (reduce-message
+    [packet opts rf acc]
+    (let [data (.getInputStream packet)
+          format (tags/code-&gt;tag data-formats (char (.getFormat packet)))]
+      (rf acc {:format format
+               :filename (.getFileName packet)
+               :mtime (.getModificationTime packet)
+               :data data})))
+
+  (readable
+    [packet opts]
+    ;; PGPLiteralData is always readable
+    packet))</pre></td></tr><tr><td class="docs"><h2>Compressed Data Packets</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with a compressed data generator, returning another
+  stream. Typically, literal data packets will be written to this stream, which
+  are compressed and written to an underlying encryption stream.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn compressed-data-stream
+  ^OutputStream
+  [^OutputStream output algorithm]
+  (.open (PGPCompressedDataGenerator.
+           (tags/compression-algorithm-code algorithm))
+         output))</pre></td></tr><tr><td class="docs"><p>Decompress the data contained in the packet.</p>
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
+  PGPCompressedData
+
+  (reduce-message
+    [packet opts rf acc]
+    (let [zip-algo (tags/compression-algorithm-tag
+                     (.getAlgorithm packet))]
+      (reduce
+        (fn [acc packet]
+          (reduce-message packet opts (with-reduce-attrs rf :compress zip-algo) acc))
+        acc
+        (pgp/read-objects (.getDataStream packet)))))
+
+  (readable
+    [packet opts]
+    ;; PGPCompressedData is always readable
+    packet))</pre></td></tr><tr><td class="docs"><h2>Encrypted Data Packets</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Adds an encryption method to an encrypted data generator. Returns the updated
+  generator.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- add-encryption-method!
+  ^PGPEncryptedDataGenerator
+  [^PGPEncryptedDataGenerator generator encryptor]
+  (cond
+    (string? encryptor)
+    (.addMethod generator
+      (BcPBEKeyEncryptionMethodGenerator.
+        (.toCharArray ^String encryptor)))
+    (pgp/public-key encryptor)
+    (.addMethod generator
+      (BcPublicKeyKeyEncryptionMethodGenerator.
+        (pgp/public-key encryptor)))
+    :else
+    (throw (IllegalArgumentException.
+             (str &quot;Don't know how to encrypt data with &quot; (pr-str encryptor)))))
+  generator)</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with an encrypted data generator, returning another
+  stream. The data written to the stream will be encrypted with a symmetric
+  session key, which is then encrypted for each of the given public keys.</p>
+
+<p>  Typically, the data written to this will consist of compressed data packets.
+  If the data is longer than the buffer size, the packet is written in chunks
+  in a streaming fashion.</p>
+
+<p>  Options may be provided to customize the packet:</p>
+
+<ul>
+<li><code>:buffer-size</code>      maximum number of bytes per chunk</li>
+<li><code>:integrity-packet</code> whether to include a Modification Detection Code packet</li>
+<li><code>:random</code>           custom random number generator</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(defn encrypted-data-stream
+  ^OutputStream
+  [^OutputStream output cipher encryptors &amp; opts]
+  (let [encryptors (arg-coll encryptors)
+        {:keys [buffer-size integrity-packet random]
+         :or {buffer-size 4096
+              integrity-packet true}}
+        (arg-map opts)]
+    (when (empty? (remove nil? encryptors))
+      (throw (IllegalArgumentException.
+               &quot;Cannot encrypt data stream without encryptors.&quot;)))
+    (when (&lt; 1 (count (filter string? encryptors)))
+      (throw (IllegalArgumentException.
+               &quot;Only one passphrase encryptor is supported&quot;)))
+    (.open
+      ^PGPEncryptedDataGenerator
+      (reduce
+        add-encryption-method!
+        (PGPEncryptedDataGenerator.
+          (cond-&gt;
+            (BcPGPDataEncryptorBuilder.
+              (tags/symmetric-key-algorithm-code cipher))
+            integrity-packet (.setWithIntegrityPacket true)
+            random           (.setSecureRandom ^SecureRandom random)))
+        encryptors)
+      output
+      (byte-array buffer-size))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
+
+  PGPEncryptedDataList
+
+  ;; Read through the list of encrypted session keys and attempt to find one
+  ;; which the decryptor will unlock. If none are found, the message is not
+  ;; decipherable and an exception is thrown.
+
+  (reduce-message
+    [packet opts rf acc]
+    (if-let [readable-packet (readable packet opts)]
+      (reduce-message readable-packet opts rf acc)
+      (throw (IllegalArgumentException.
+               (str &quot;Cannot decrypt &quot; (pr-str packet) &quot; with &quot; (pr-str opts)
+                    &quot; (no matching encrypted session key)&quot;)))))
+
+  (readable
+    [packet opts]
+    (some
+      #(readable % opts)
+      (iterator-seq (.getEncryptedDataObjects packet))))
+
+
+  PGPPBEEncryptedData
+
+  (reduce-message
+    [packet {:keys [decryptor] :as opts} rf acc]
+    (let [decryptor-factory (BcPBEDataDecryptorFactory.
+                              (.toCharArray ^String decryptor)
+                              (BcPGPDigestCalculatorProvider.))
+          cipher (-&gt; packet
+                     (.getSymmetricAlgorithm decryptor-factory)
+                     tags/symmetric-key-algorithm-tag)]
+      (reduce-content
+        (.getDataStream packet decryptor-factory)
+        opts
+        (with-reduce-attrs rf :cipher cipher :object packet)
+        acc)))
+
+  ;; If the decryptor is a string, try to use it to decrypt the passphrase
+  ;; protected session key.
+  (readable
+    [packet {:keys [decryptor] :as opts}]
+    (when (string? decryptor)
+      packet))
+
+
+  PGPPublicKeyEncryptedData
+
+  (reduce-message
+    [packet {:keys [decryptor] :as opts} rf acc]
+    (let [for-key (.getKeyID packet)
+          privkey (pgp/private-key
+                    (if (ifn? decryptor)
+                      (decryptor for-key)
+                      decryptor))
+          decryptor-factory (BcPublicKeyDataDecryptorFactory. privkey)
+          cipher (-&gt; packet
+                     (.getSymmetricAlgorithm decryptor-factory)
+                     tags/symmetric-key-algorithm-tag)]
+      (reduce-content
+        (.getDataStream packet decryptor-factory)
+        opts
+        (with-reduce-attrs rf :encrypted-for for-key :cipher cipher :object packet )
+        acc)))
+
+  ;; If the decryptor is callable, use it to find a private key matching the id
+  ;; on the data packet. Otherwise, use it directly as a private key. If the
+  ;; decryptor doesn't match the id, return nil.
+  (readable
+    [packet {:keys [decryptor] :as opts}]
+    (let [for-key (.getKeyID packet)]
+      (when (some-&gt; (if (ifn? decryptor)
+                      (decryptor for-key)
+                      decryptor)
+                    (pgp/private-key)
+                    (pgp/key-id)
+                    (= for-key))
+        packet))))</pre></td></tr><tr><td class="docs"><h2>Constructing PGP Messages</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Wraps the given output stream with compression and encryption layers. The
+  data will decryptable by the corresponding decryptors. Does <em>not</em> close the
+  wrapped stream when it is closed.</p>
+
+<p>  Opts may contain:</p>
+
+<ul>
+<li><code>:buffer-size</code> maximum number of bytes per chunk</li>
+<li><code>:compress</code>    compress the cleartext with the given algorithm, if specified</li>
+<li><code>:cipher</code>      symmetric key algorithm to use if encryptors are provided</li>
+<li><code>:encryptors</code>  keys to encrypt the cipher session key with</li>
+<li><p><code>:armor</code>       whether to ascii-encode the output</p>
+
+<p>See <code>literal-data-stream</code> and <code>encrypted-data-stream</code> for more options.</p></li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(defn message-output-stream
+  ^OutputStream
+  [^OutputStream output &amp; opts]
+  (let [{:keys [compress cipher encryptors armor]
+         :or {cipher :aes-256}
+         :as opts}
+        (arg-map opts)
+        encryptors (arg-coll encryptors)
+        wrap-with
+        (fn [streams wrapper &amp; args]
+          (conj streams (apply wrapper (last streams) args)))
+        streams
+        (-&gt;
+          (vector output)
+          (cond-&gt;
+            armor      (wrap-with armored-data-stream)
+            encryptors (wrap-with encrypted-data-stream cipher encryptors opts)
+            compress   (wrap-with compressed-data-stream compress))
+          (wrap-with literal-data-stream opts)
+          rest reverse)]
+    (proxy [FilterOutputStream] [(first streams)]
+      (close []
+        (dorun (map #(.close ^OutputStream %) streams))))))</pre></td></tr><tr><td class="docs"><p>Compresses, encrypts, and encodes the given data and returns an encoded
+  message packet. If the <code>:armor</code> option is set, the result will be an ASCII
+  string; otherwise, the function returns a byte array.</p>
+
+<p>  The message will readable by any of the corresponding decryptors.</p>
+
+<p>  See <code>message-output-stream</code> for options.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn package
+  [data &amp; opts]
+  (let [opts (arg-map opts)
+        buffer (ByteArrayOutputStream.)]
+    (with-open [^OutputStream stream
+                (message-output-stream buffer opts)]
+      (io/copy data stream))
+    (cond-&gt; (.toByteArray buffer)
+      (:armor opts) String.)))</pre></td></tr><tr><td class="docs"><p>Constructs a message packet enciphered for the given encryptors. See
+  <code>message-output-stream</code> for options.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn encrypt
+  [data encryptors &amp; opts]
+  (apply package data
+         :encryptors encryptors
+         opts))</pre></td></tr><tr><td class="docs"><h2>Reading PGP Messages</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Reduces over the PGP objects the returns the resulting accumulator.
+  Verifys the integrity of each object and throws if its invalid.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- reduce-objects
+  [opts rf acc objects]
+  (reduce
+    (fn reduce-and-verify!
+      [acc message]
+      (reduce-message
+        message
+        opts
+        (fn [acc {:keys [object] :as message}]
+          ;; To be able to verify the integrity we must have consumed the stream itself.
+          ;; Make sure to call the reducing function and then verify the message.
+          (let [results (rf acc message)]
+            (when (and (instance? PGPEncryptedData object)
+                       (.isIntegrityProtected object)
+                       (not (.verify object)))
+              (throw (IllegalStateException.
+                       (str &quot;Encrypted data object &quot; object
+                            &quot; failed integrity verification!&quot;))))
+            results))
+        acc))
+    acc
+    objects))</pre></td></tr><tr><td class="docs"><p>Reads message packets form an input source and reduces over them with the
+  given accumulator <code>acc</code> and reducing function <code>rf</code>. Each message contains
+  keys similiar to the options used to build them, describing the type of compression used,
+  cophier encrypted with, etc. The <code>rf</code> should take the accumulator and a <code>message</code> and
+  return the resulting accumulator. It must consume the stream passed in the <code>:data</code> field.
+  A message is a map containing:
+  - <code>:format</code> one of #{:binary :text :utf8}
+  - <code>:data</code> An InputStream
+  - <code>:filename</code> the name of the file
+  - <code>:mtime</code> the modified time of the message</p>
+
+<p>  Opts may contain:</p>
+
+<ul>
+<li><code>:decryptor</code> secret to decipher the message encryption</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(defn reduce-messages
+  [input rf acc &amp; opts]
+  (-&gt;&gt; input
+       bytes/to-input-stream
+       PGPUtil/getDecoderStream
+       pgp/read-objects
+       (reduce-objects (apply hash-map opts) rf acc)))</pre></td></tr><tr><td class="docs"><p>Reads message packets from an input source and returns a sequence of message
+  maps which have realized <code>:data</code> entries.</p>
+
+<p>  See <code>reduce-messages</code> for options</p>
+</td><td class="codes"><pre class="brush: clojure">(defn read-messages
+  [input &amp; opts]
+  (apply
+    reduce-messages
+    input
+    (fn [acc {:keys [format data] :as message}]
+      (let [data' (bytes/to-byte-array data)]
+        (-&gt;&gt; (case format
+               (:text :utf8) (String. data')
+               data')
+             (assoc message :data)
+             (conj acc))))
+    []
+    opts))</pre></td></tr><tr><td class="docs"><p>Decrypts a message packet and attempts to decipher it with the given
+  decryptor. Returns the data of the first message directly.</p>
+
+<p>  See <code>read-messages</code> for options.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn decrypt
+  [input decryptor &amp; opts]
+  (-&gt;
+    (apply read-messages input
+           :decryptor decryptor
+           opts)
+    first :data))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.core" name="clj-pgp.core"><h1 class="project-name">clj-pgp.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Core functions for handling PGP objects.</p>
+</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.core
+  (:require
+    [byte-streams :as bytes]
+    [clojure.java.io :as io]
+    [clojure.string :as str]
+    [clj-pgp.tags :as tags])
+  (:import
+    (java.io
+      ByteArrayOutputStream
+      InputStream)
+    java.util.Date
+    (org.bouncycastle.bcpg
+      ArmoredOutputStream)
+    (org.bouncycastle.openpgp
+      PGPKeyPair
+      PGPObjectFactory
+      PGPPrivateKey
+      PGPPublicKey
+      PGPPublicKeyRing
+      PGPSecretKey
+      PGPSignature
+      PGPSignatureList
+      PGPUtil)
+    (org.bouncycastle.openpgp.operator.bc
+      BcKeyFingerprintCalculator
+      BcPBESecretKeyDecryptorBuilder
+      BcPGPDigestCalculatorProvider)))</pre></td></tr><tr><td class="docs"><h2>Supported Algorithms</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Defines a set of supported tags for a type of algorithm.</p>
+</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private defalgorithms
+  [algo-type]
+  `(def ~(symbol (str algo-type &quot;-algorithms&quot;))
+     ~(str &quot;The set of supported &quot; algo-type &quot; algorithm keywords.&quot;)
+     (set (keys ~(symbol &quot;clj-pgp.tags&quot;
+                         (str algo-type &quot;-algorithm-tags&quot;))))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defalgorithms hash)
+(defalgorithms compression)
+(defalgorithms public-key)
+(defalgorithms symmetric-key)</pre></td></tr><tr><td class="docs"><h2>Public Key Coercion</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for value types which contain or are coercible to a PGP public key.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol PublicKeyContainer
+  (public-key
+    [this]
+    &quot;Coerces the argument into a PGP public key. Returns nil for other values.&quot;))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol PublicKeyContainer
+  nil
+  (public-key [_] nil)
+
+  Object
+  (public-key [_] nil)
+
+  PGPPublicKey
+  (public-key [pubkey] pubkey)
+
+  PGPSecretKey
+  (public-key [seckey] (.getPublicKey seckey))
+
+  PGPKeyPair
+  (public-key [keypair] (.getPublicKey keypair))
+
+  PGPPublicKeyRing
+  (public-key [keyring] (.getPublicKey keyring)))</pre></td></tr><tr><td class="docs"><h2>Private Key Coercion</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for value types which contain or are coercible to a PGP private key.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol PrivateKeyContainer
+  (private-key
+    [this]
+    &quot;Coerces the argument into a PGP private key. Returns nil for other values.&quot;))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol PrivateKeyContainer
+  nil
+  (private-key [_] nil)
+
+  Object
+  (private-key [_] nil)
+
+  PGPPrivateKey
+  (private-key [privkey] privkey)
+
+  PGPKeyPair
+  (private-key [keypair] (.getPrivateKey keypair)))</pre></td></tr><tr><td class="docs"><h2>Keypair Identifiers</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for values which can be used as PGP key identifiers.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol KeyIdentifier
+  (key-id
+    ^Long
+    [value]
+    &quot;Returns the numeric PGP key identifier for the given value.&quot;))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol KeyIdentifier
+  nil           (key-id [_] nil)
+  Long          (key-id [id] id)
+  String        (key-id [hex] (.longValue (BigInteger. hex 16)))
+  PGPPublicKey  (key-id [pubkey]  (.getKeyID pubkey))
+  PGPSecretKey  (key-id [seckey]  (.getKeyID seckey))
+  PGPPrivateKey (key-id [privkey] (.getKeyID privkey))
+  PGPKeyPair    (key-id [keypair] (.getKeyID keypair))
+  PGPSignature  (key-id [sig]     (.getKeyID sig)))</pre></td></tr><tr><td class="docs"><p>Returns the PGP key identifier for the given value as a hexadecimal string.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn hex-id
+  [value]
+  (when value
+    (format &quot;%016x&quot; (key-id value))))</pre></td></tr><tr><td class="docs"><p>Returns the PGP key fingerprint as a hexadecimal string.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn hex-fingerprint
+  [value]
+  (when-let [^PGPPublicKey pubkey (public-key value)]
+    (-&gt;&gt; (.getFingerprint pubkey)
+         (map (partial format &quot;%02X&quot;))
+         str/join)))</pre></td></tr><tr><td class="docs"><h2>Keypair Algorithms</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for values which can use or identify a cryptographic algorithm.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol KeyAlgorithmIdentifier
+  (key-algorithm
+    [value]
+    &quot;Returns a keyword identifying the key algorithm used by the given value.&quot;))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol KeyAlgorithmIdentifier
+  nil
+  (key-algorithm [_] nil)
+
+  Object
+  (key-algorithm [value]
+    (tags/public-key-algorithm-tag value))
+
+  PGPPublicKey
+  (key-algorithm [pubkey]
+    (tags/public-key-algorithm-tag
+      (.getAlgorithm pubkey)))
+
+  PGPSecretKey
+  (key-algorithm [seckey]
+    (tags/public-key-algorithm-tag
+      (.getAlgorithm (.getPublicKey seckey))))
+
+  PGPPrivateKey
+  (key-algorithm [privkey]
+    (tags/public-key-algorithm-tag
+      (.getAlgorithm (.getPublicKeyPacket privkey))))
+
+  PGPKeyPair
+  (key-algorithm [keypair]
+    (tags/public-key-algorithm-tag
+      (.getAlgorithm (.getPublicKey keypair)))))</pre></td></tr><tr><td class="docs"><h2>Key Utilities</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Returns a map of information about the given key.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn key-info
+  [k]
+  (when-let [^PGPPublicKey pubkey (public-key k)]
+    (cond-&gt;
+      {:master-key? (.isMasterKey pubkey)
+       :key-id (hex-id pubkey)
+       :strength (.getBitStrength pubkey)
+       :algorithm (key-algorithm pubkey)
+       :fingerprint (hex-fingerprint pubkey)
+       :created-at (.getCreationTime pubkey)
+       :revoked? (.isRevoked pubkey)
+       :encryption-key? (.isEncryptionKey pubkey)
+       :user-ids (-&gt; pubkey .getUserIDs iterator-seq vec)}
+      (pos? (.getValidSeconds pubkey))
+      (assoc :expires-at (Date. (+ (.getTime (.getCreationTime pubkey))
+                                   (* 1000 (.getValidSeconds pubkey)))))
+      (instance? PGPSecretKey k)
+      (merge {:secret-key? true
+              :signing-key? (.isSigningKey ^PGPSecretKey k)}))))</pre></td></tr><tr><td class="docs"><p>Decodes a secret key with a passphrase to obtain the private key.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn unlock-key
+  [^PGPSecretKey seckey
+   ^String passphrase]
+  (.extractPrivateKey seckey
+    (-&gt; (BcPGPDigestCalculatorProvider.)
+        (BcPBESecretKeyDecryptorBuilder.)
+        (.build (.toCharArray passphrase)))))</pre></td></tr><tr><td class="docs"><h2>PGP Object Encoding</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for encodable PGP objects.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol Encodable
+  (encode
+    [value]
+    &quot;Encodes a PGP object into a byte array.&quot;))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol Encodable
+
+  PGPPublicKey
+
+  (encode [pubkey]
+    (.getEncoded pubkey))
+
+
+  PGPSignature
+
+  (encode [sig]
+    (.getEncoded sig)))</pre></td></tr><tr><td class="docs"><p>Encodes a PGP object into an ascii-armored text blob.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn encode-ascii
+  [data]
+  (let [buffer (ByteArrayOutputStream.)]
+    (with-open [encoder (ArmoredOutputStream. buffer)]
+      (io/copy (encode data) encoder))
+    (str buffer)))</pre></td></tr><tr><td class="docs"><h2>PGP Object Decoding</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Lazily decodes a sequence of PGP objects from an input stream.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn ^:no-doc read-objects
+  [^InputStream input]
+  (let [factory (PGPObjectFactory. input (BcKeyFingerprintCalculator.))]
+    (-&gt;&gt;
+      (repeatedly #(.nextObject factory))
+      (take-while some?))))</pre></td></tr><tr><td class="docs"><p>Decodes PGP objects from an encoded data source. Returns a sequence of
+  decoded objects.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn decode
+  [data]
+  (with-open [stream (PGPUtil/getDecoderStream
+                       (bytes/to-input-stream data))]
+    (doall (read-objects stream))))</pre></td></tr><tr><td class="docs"><p>Decodes a public key from the given data. Throws an exception if the data
+  does not contain a public key value.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn decode-public-key
+  [data]
+  (let [value (first (decode data))]
+    (or (public-key value)
+        (throw (IllegalStateException.
+                 (str &quot;Data did not contain a public key: &quot; value))))))</pre></td></tr><tr><td class="docs"><p>Decodes a sequence of signatures from the given data. Throws an exception if
+  the data does not contain a signature list.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn decode-signatures
+  [data]
+  (-&gt;&gt;
+    (decode data)
+    (map
+      (fn [object]
+        (condp instance? object
+          PGPSignature
+          object
+          PGPSignatureList
+          (map #(.get ^PGPSignatureList object %)
+               (range (.size ^PGPSignatureList object))))))
+    flatten))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.signature" name="clj-pgp.signature"><h1 class="project-name">clj-pgp.signature</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The functions in this namespace generate and verify PGP signatures.</p>
+</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.signature
+  (:require
+    [byte-streams :as bytes]
+    (clj-pgp
+      [core :as pgp]
+      [tags :as tags]
+      [util :refer [arg-map]]))
+  (:import
+    (org.bouncycastle.openpgp
+      PGPPrivateKey
+      PGPPublicKey
+      PGPSignature
+      PGPSignatureGenerator)
+    (org.bouncycastle.openpgp.operator.bc
+      BcPGPContentSignerBuilder
+      BcPGPContentVerifierBuilderProvider)))</pre></td></tr><tr><td class="docs"><h2>Signature Utilities</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Executes the body on chunks of the byte sequence read from the given data
+  source. This is an anaphoric macro which exposes a byte array <code>buffer</code> and a
+  number of bytes read into it as <code>n</code>.</p>
+</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private apply-bytes
+  [source &amp; body]
+  `(with-open [stream# (bytes/to-input-stream ~source)]
+     (let [~'buffer (byte-array 512)]
+       (loop [~'n (.read stream# ~'buffer)]
+         (when (pos? ~'n)
+           ~@body
+           (recur (.read stream# ~'buffer)))))))</pre></td></tr><tr><td class="docs"><h2>Provider Protocol</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>This protocol provides a generic way to provide signature creation.</p>
+
+<p>  The simple approach is to use unlocked private keys directly, but this allows
+  for more nuanced approaches such as interfacing with gpg-agent, TPMs, or
+  other secret-holding services.</p>
+</td><td class="codes"><pre class="brush: clojure">(defprotocol SignatureProvider
+  (create-signature
+    [provider data opts]
+    &quot;Produces a PGP signature by hashing the data with a digest algorithm and
+    encrypting the digest with a private key.
+    If the `:key-id` option is not specified, some default signing key should
+    be used. Throws an exception if a matching key cannot be used.&quot;))</pre></td></tr><tr><td class="docs"><p>Signs data with the given provider and options. The <code>provider</code> must either be
+  coerceable into a private key or implement the <code>SignatureProvider</code> protocol.</p>
+
+<ul>
+<li><code>:hash-algo</code> digest algorithm to hash the data with</li>
+<li><code>:key-id</code>    identifier of the desired signature key</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(defn sign
+  [data provider &amp; opts]
+  (let [provider (or (pgp/private-key provider) provider)
+        opts (merge {:hash-algo :sha1}
+                    (arg-map opts))]
+    (create-signature provider data opts)))</pre></td></tr><tr><td class="docs"><p>Verifies a PGP signature. Returns true if the data was signed by the private
+  key matching the given public key.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn verify
+  [data ^PGPSignature signature pubkey]
+  (when-not (= (pgp/key-id signature) (pgp/key-id pubkey))
+    (throw (IllegalArgumentException.
+             (str &quot;Signature key id &quot; (pgp/hex-id signature)
+                  &quot; doesn't match provided key id &quot; (pgp/hex-id pubkey)))))
+  (.init signature
+         (BcPGPContentVerifierBuilderProvider.)
+         ^PGPPublicKey (pgp/public-key pubkey))
+  (apply-bytes data
+    (.update signature buffer 0 n))
+  (.verify signature))</pre></td></tr><tr><td class="docs"><h2>Private-Key Signatures</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Private keys can be used to directly provide signatures on data. The
+default signing key is the provided key itself, so if an explicit identifier
+is provided which doesn't match the key id, an error is thrown.</p>
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol SignatureProvider
+
+  PGPPrivateKey
+
+  (create-signature
+    [privkey data {:keys [hash-algo key-id]}]
+    (when (and key-id (not= key-id (pgp/key-id privkey)))
+      (throw (IllegalArgumentException.
+               (str &quot;Desired signing key &quot; (pgp/hex-id key-id) &quot; does not match &quot;
+                    &quot;private key &quot; (pgp/hex-id privkey)))))
+    (let [generator (PGPSignatureGenerator.
+                      (BcPGPContentSignerBuilder.
+                        (tags/public-key-algorithm-code (pgp/key-algorithm privkey))
+                        (tags/hash-algorithm-code hash-algo)))]
+      (.init generator
+             PGPSignature/BINARY_DOCUMENT
+             privkey)
+      (apply-bytes data
+        (.update generator buffer 0 n))
+      (.generate generator))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.generate" name="clj-pgp.generate"><h1 class="project-name">clj-pgp.generate</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>This namespace provides functionality to generate PGP keypairs and keyrings
   using a convenient macro syntax.</p>
 
 <p>  The two primary supported key types are RSA keys (via <code>rsa-keypair-generator</code>)
@@ -3147,250 +3977,7 @@ net.brehaut.ClojureTools = (function (SH) {
     `(generate-keyrings
        (doto
          ~(master-keyring-generator user-id passphrase (:master spec-map))
-         ~@(map add-keyring-subkey (:subkeys spec-map))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.util" name="clj-pgp.util"><h1 class="project-name">clj-pgp.util</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Internal utility functions used by other namespaces.</p>
-</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.util)</pre></td></tr><tr><td class="docs"><p>Returns a collection from the arguments provided. If <code>args</code> is a
-  non-collection value, a single-element collection containing <code>args</code> is
-  returned.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn arg-coll
-  [args]
-  (if (and args (not (coll? args)))
-    (list args)
-    (seq args)))</pre></td></tr><tr><td class="docs"><p>Takes a sequence of args and returns a seq. If only one argument is given
-  and it is sequential, it is retured directly. Otherwise the seq of args is
-  returned. Returns nil for empty args.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn arg-seq
-  [args]
-  (if (and (= 1 (count args))
-           (sequential? (first args)))
-    (seq (first args))
-    (seq args)))</pre></td></tr><tr><td class="docs"><p>Takes a sequence of args and returns a map. If only one argument is given
-  and it is a map, it is retured directly. Otherwise the seq of args is treated
-  as keyword args and returned as a map.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn arg-map
-  [args]
-  (cond
-    (nil? args) nil
-    (map? args) args
-    (= 1 (count args)) (recur (first args))
-    :else (apply array-map args)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.core" name="clj-pgp.core"><h1 class="project-name">clj-pgp.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Core functions for handling PGP objects.</p>
-</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.core
-  (:require
-    [byte-streams :as bytes]
-    [clojure.java.io :as io]
-    [clojure.string :as str]
-    [clj-pgp.tags :as tags])
-  (:import
-    (java.io
-      ByteArrayOutputStream
-      InputStream)
-    java.util.Date
-    (org.bouncycastle.bcpg
-      ArmoredOutputStream)
-    (org.bouncycastle.openpgp
-      PGPKeyPair
-      PGPObjectFactory
-      PGPPrivateKey
-      PGPPublicKey
-      PGPPublicKeyRing
-      PGPSecretKey
-      PGPSignature
-      PGPSignatureList
-      PGPUtil)
-    (org.bouncycastle.openpgp.operator.bc
-      BcKeyFingerprintCalculator
-      BcPBESecretKeyDecryptorBuilder
-      BcPGPDigestCalculatorProvider)))</pre></td></tr><tr><td class="docs"><h2>Supported Algorithms</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Defines a set of supported tags for a type of algorithm.</p>
-</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private defalgorithms
-  [algo-type]
-  `(def ~(symbol (str algo-type &quot;-algorithms&quot;))
-     ~(str &quot;The set of supported &quot; algo-type &quot; algorithm keywords.&quot;)
-     (set (keys ~(symbol &quot;clj-pgp.tags&quot;
-                         (str algo-type &quot;-algorithm-tags&quot;))))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defalgorithms hash)
-(defalgorithms compression)
-(defalgorithms public-key)
-(defalgorithms symmetric-key)</pre></td></tr><tr><td class="docs"><h2>Public Key Coercion</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for value types which contain or are coercible to a PGP public key.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol PublicKeyContainer
-  (public-key
-    [this]
-    &quot;Coerces the argument into a PGP public key. Returns nil for other values.&quot;))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol PublicKeyContainer
-  nil
-  (public-key [_] nil)
-
-  Object
-  (public-key [_] nil)
-
-  PGPPublicKey
-  (public-key [pubkey] pubkey)
-
-  PGPSecretKey
-  (public-key [seckey] (.getPublicKey seckey))
-
-  PGPKeyPair
-  (public-key [keypair] (.getPublicKey keypair))
-
-  PGPPublicKeyRing
-  (public-key [keyring] (.getPublicKey keyring)))</pre></td></tr><tr><td class="docs"><h2>Private Key Coercion</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for value types which contain or are coercible to a PGP private key.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol PrivateKeyContainer
-  (private-key
-    [this]
-    &quot;Coerces the argument into a PGP private key. Returns nil for other values.&quot;))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol PrivateKeyContainer
-  nil
-  (private-key [_] nil)
-
-  Object
-  (private-key [_] nil)
-
-  PGPPrivateKey
-  (private-key [privkey] privkey)
-
-  PGPKeyPair
-  (private-key [keypair] (.getPrivateKey keypair)))</pre></td></tr><tr><td class="docs"><h2>Keypair Identifiers</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for values which can be used as PGP key identifiers.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol KeyIdentifier
-  (key-id
-    [value]
-    &quot;Returns the numeric PGP key identifier for the given value.&quot;))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol KeyIdentifier
-  nil           (key-id [_] nil)
-  Long          (key-id [id] id)
-  String        (key-id [hex] (.longValue (BigInteger. hex 16)))
-  PGPPublicKey  (key-id [pubkey]  (.getKeyID pubkey))
-  PGPSecretKey  (key-id [seckey]  (.getKeyID seckey))
-  PGPPrivateKey (key-id [privkey] (.getKeyID privkey))
-  PGPKeyPair    (key-id [keypair] (.getKeyID keypair))
-  PGPSignature  (key-id [sig]     (.getKeyID sig)))</pre></td></tr><tr><td class="docs"><p>Returns the PGP key identifier for the given value as a hexadecimal string.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn hex-id
-  [value]
-  (when value
-    (format &quot;%016x&quot; (key-id value))))</pre></td></tr><tr><td class="docs"><p>Returns the PGP key fingerprint as a hexadecimal string.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn hex-fingerprint
-  [value]
-  (when-let [^PGPPublicKey pubkey (public-key value)]
-    (-&gt;&gt; (.getFingerprint pubkey)
-         (map (partial format &quot;%02X&quot;))
-         str/join)))</pre></td></tr><tr><td class="docs"><h2>Keypair Algorithms</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for values which can use or identify a cryptographic algorithm.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol KeyAlgorithmIdentifier
-  (key-algorithm
-    [value]
-    &quot;Returns a keyword identifying the key algorithm used by the given value.&quot;))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol KeyAlgorithmIdentifier
-  nil
-  (key-algorithm [_] nil)
-
-  Object
-  (key-algorithm [value]
-    (tags/public-key-algorithm-tag value))
-
-  PGPPublicKey
-  (key-algorithm [pubkey]
-    (tags/public-key-algorithm-tag
-      (.getAlgorithm pubkey)))
-
-  PGPSecretKey
-  (key-algorithm [seckey]
-    (tags/public-key-algorithm-tag
-      (.getAlgorithm (.getPublicKey seckey))))
-
-  PGPPrivateKey
-  (key-algorithm [privkey]
-    (tags/public-key-algorithm-tag
-      (.getAlgorithm (.getPublicKeyPacket privkey))))
-
-  PGPKeyPair
-  (key-algorithm [keypair]
-    (tags/public-key-algorithm-tag
-      (.getAlgorithm (.getPublicKey keypair)))))</pre></td></tr><tr><td class="docs"><h2>Key Utilities</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Returns a map of information about the given key.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn key-info
-  [k]
-  (when-let [^PGPPublicKey pubkey (public-key k)]
-    (cond-&gt;
-      {:master-key? (.isMasterKey pubkey)
-       :key-id (hex-id pubkey)
-       :strength (.getBitStrength pubkey)
-       :algorithm (key-algorithm pubkey)
-       :fingerprint (hex-fingerprint pubkey)
-       :created-at (.getCreationTime pubkey)
-       :revoked? (.isRevoked pubkey)
-       :encryption-key? (.isEncryptionKey pubkey)
-       :user-ids (-&gt; pubkey .getUserIDs iterator-seq vec)}
-      (pos? (.getValidSeconds pubkey))
-      (assoc :expires-at (Date. (+ (.getTime (.getCreationTime pubkey))
-                                   (* 1000 (.getValidSeconds pubkey)))))
-      (instance? PGPSecretKey k)
-      (merge {:secret-key? true
-              :signing-key? (.isSigningKey ^PGPSecretKey k)}))))</pre></td></tr><tr><td class="docs"><p>Decodes a secret key with a passphrase to obtain the private key.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn unlock-key
-  [^PGPSecretKey seckey
-   ^String passphrase]
-  (.extractPrivateKey seckey
-    (-&gt; (BcPGPDigestCalculatorProvider.)
-        (BcPBESecretKeyDecryptorBuilder.)
-        (.build (.toCharArray passphrase)))))</pre></td></tr><tr><td class="docs"><h2>PGP Object Encoding</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for encodable PGP objects.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol Encodable
-  (encode
-    [value]
-    &quot;Encodes a PGP object into a byte array.&quot;))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol Encodable
-
-  PGPPublicKey
-
-  (encode [pubkey]
-    (.getEncoded pubkey))
-
-
-  PGPSignature
-
-  (encode [sig]
-    (.getEncoded sig)))</pre></td></tr><tr><td class="docs"><p>Encodes a PGP object into an ascii-armored text blob.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn encode-ascii
-  [data]
-  (let [buffer (ByteArrayOutputStream.)]
-    (with-open [encoder (ArmoredOutputStream. buffer)]
-      (io/copy (encode data) encoder))
-    (str buffer)))</pre></td></tr><tr><td class="docs"><h2>PGP Object Decoding</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Lazily decodes a sequence of PGP objects from an input stream.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn ^:no-doc read-objects
-  [^InputStream input]
-  (let [factory (PGPObjectFactory. input (BcKeyFingerprintCalculator.))]
-    (-&gt;&gt;
-      (repeatedly #(.nextObject factory))
-      (take-while some?))))</pre></td></tr><tr><td class="docs"><p>Decodes PGP objects from an encoded data source. Returns a sequence of
-  decoded objects.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn decode
-  [data]
-  (with-open [stream (PGPUtil/getDecoderStream
-                       (bytes/to-input-stream data))]
-    (doall (read-objects stream))))</pre></td></tr><tr><td class="docs"><p>Decodes a public key from the given data. Throws an exception if the data
-  does not contain a public key value.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn decode-public-key
-  [data]
-  (let [value (first (decode data))]
-    (or (public-key value)
-        (throw (IllegalStateException.
-                 (str &quot;Data did not contain a public key: &quot; value))))))</pre></td></tr><tr><td class="docs"><p>Decodes a sequence of signatures from the given data. Throws an exception if
-  the data does not contain a signature list.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn decode-signatures
-  [data]
-  (-&gt;&gt;
-    (decode data)
-    (map
-      (fn [object]
-        (condp instance? object
-          PGPSignature
-          object
-          PGPSignatureList
-          (map #(.get ^PGPSignatureList object %)
-               (range (.size ^PGPSignatureList object))))))
-    flatten))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.keyring" name="clj-pgp.keyring"><h1 class="project-name">clj-pgp.keyring</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>This namespace handles interactions with PGP keyrings.</p>
+         ~@(map add-keyring-subkey (:subkeys spec-map))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.keyring" name="clj-pgp.keyring"><h1 class="project-name">clj-pgp.keyring</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>This namespace handles interactions with PGP keyrings.</p>
 
 <p>  Literal keyring files are directly supported, and key servers and other
   stores can extend the <code>KeyRing</code> protocol for further extension.</p>
@@ -3526,519 +4113,7 @@ net.brehaut.ClojureTools = (function (SH) {
 
   (encode
     [this]
-    (.getEncoded this)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.signature" name="clj-pgp.signature"><h1 class="project-name">clj-pgp.signature</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The functions in this namespace generate and verify PGP signatures.</p>
-</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.signature
-  (:require
-    [byte-streams :as bytes]
-    (clj-pgp
-      [core :as pgp]
-      [tags :as tags]
-      [util :refer [arg-map]]))
-  (:import
-    (org.bouncycastle.openpgp
-      PGPPrivateKey
-      PGPPublicKey
-      PGPSignature
-      PGPSignatureGenerator)
-    (org.bouncycastle.openpgp.operator.bc
-      BcPGPContentSignerBuilder
-      BcPGPContentVerifierBuilderProvider)))</pre></td></tr><tr><td class="docs"><h2>Signature Utilities</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Executes the body on chunks of the byte sequence read from the given data
-  source. This is an anaphoric macro which exposes a byte array <code>buffer</code> and a
-  number of bytes read into it as <code>n</code>.</p>
-</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private apply-bytes
-  [source &amp; body]
-  `(with-open [stream# (bytes/to-input-stream ~source)]
-     (let [~'buffer (byte-array 512)]
-       (loop [~'n (.read stream# ~'buffer)]
-         (when (pos? ~'n)
-           ~@body
-           (recur (.read stream# ~'buffer)))))))</pre></td></tr><tr><td class="docs"><h2>Provider Protocol</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>This protocol provides a generic way to provide signature creation.</p>
-
-<p>  The simple approach is to use unlocked private keys directly, but this allows
-  for more nuanced approaches such as interfacing with gpg-agent, TPMs, or
-  other secret-holding services.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol SignatureProvider
-  (create-signature
-    [provider data opts]
-    &quot;Produces a PGP signature by hashing the data with a digest algorithm and
-    encrypting the digest with a private key.
-    If the `:key-id` option is not specified, some default signing key should
-    be used. Throws an exception if a matching key cannot be used.&quot;))</pre></td></tr><tr><td class="docs"><p>Signs data with the given provider and options. The <code>provider</code> must either be
-  coerceable into a private key or implement the <code>SignatureProvider</code> protocol.</p>
-
-<ul>
-<li><code>:hash-algo</code> digest algorithm to hash the data with</li>
-<li><code>:key-id</code>    identifier of the desired signature key</li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defn sign
-  [data provider &amp; opts]
-  (let [provider (or (pgp/private-key provider) provider)
-        opts (merge {:hash-algo :sha1}
-                    (arg-map opts))]
-    (create-signature provider data opts)))</pre></td></tr><tr><td class="docs"><p>Verifies a PGP signature. Returns true if the data was signed by the private
-  key matching the given public key.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn verify
-  [data ^PGPSignature signature pubkey]
-  (when-not (= (pgp/key-id signature) (pgp/key-id pubkey))
-    (throw (IllegalArgumentException.
-             (str &quot;Signature key id &quot; (pgp/hex-id signature)
-                  &quot; doesn't match provided key id &quot; (pgp/hex-id pubkey)))))
-  (.init signature
-         (BcPGPContentVerifierBuilderProvider.)
-         ^PGPPublicKey (pgp/public-key pubkey))
-  (apply-bytes data
-    (.update signature buffer 0 n))
-  (.verify signature))</pre></td></tr><tr><td class="docs"><h2>Private-Key Signatures</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Private keys can be used to directly provide signatures on data. The
-default signing key is the provided key itself, so if an explicit identifier
-is provided which doesn't match the key id, an error is thrown.</p>
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol SignatureProvider
-
-  PGPPrivateKey
-
-  (create-signature
-    [privkey data {:keys [hash-algo key-id]}]
-    (when (and key-id (not= key-id (pgp/key-id privkey)))
-      (throw (IllegalArgumentException.
-               (str &quot;Desired signing key &quot; (pgp/hex-id key-id) &quot; does not match &quot;
-                    &quot;private key &quot; (pgp/hex-id privkey)))))
-    (let [generator (PGPSignatureGenerator.
-                      (BcPGPContentSignerBuilder.
-                        (tags/public-key-algorithm-code (pgp/key-algorithm privkey))
-                        (tags/hash-algorithm-code hash-algo)))]
-      (.init generator
-             PGPSignature/BINARY_DOCUMENT
-             privkey)
-      (apply-bytes data
-        (.update generator buffer 0 n))
-      (.generate generator))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.message" name="clj-pgp.message"><h1 class="project-name">clj-pgp.message</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The functions in this namespace package raw data into PGP <em>messages</em>, which
-  can be compressed, encrypted, and signed.</p>
-
-<p>  The encryption functions use the concept of <em>encryptors</em> and <em>decryptors</em>.
-  A collection of encryptors may be used to encipher a message, and any
-  corresponding decryptor will be able to decipher it.</p>
-
-<p>  For symmetric encryption, the encryptor is the passphrase string and the
-  corresponding decryptor is the same string.</p>
-
-<p>  For public-key encryption, the encryptor is the public-key object and the
-  decryptor is the corresponding private-key. Alternately, the decryptor can be
-  a function which accepts a key id and returns the corresponding private-key,
-  to look it up or unlock the key on demand.</p>
-</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.message
-  (:require
-    [byte-streams :as bytes]
-    [clojure.java.io :as io]
-    (clj-pgp
-      [core :as pgp]
-      [tags :as tags]
-      [util :refer [arg-coll arg-map]]))
-  (:import
-    (java.io
-      ByteArrayOutputStream
-      FilterOutputStream
-      InputStream
-      OutputStream)
-    java.nio.ByteBuffer
-    java.security.SecureRandom
-    java.util.Date
-    (org.bouncycastle.bcpg
-      ArmoredOutputStream)
-    (org.bouncycastle.openpgp
-      PGPPBEEncryptedData
-      PGPCompressedData
-      PGPCompressedDataGenerator
-      PGPEncryptedData
-      PGPEncryptedDataGenerator
-      PGPEncryptedDataList
-      PGPLiteralData
-      PGPLiteralDataGenerator
-      PGPObjectFactory
-      PGPPublicKeyEncryptedData
-      PGPUtil)
-    (org.bouncycastle.openpgp.operator.bc
-      BcPGPDataEncryptorBuilder
-      BcPBEDataDecryptorFactory
-      BcPBEKeyEncryptionMethodGenerator
-      BcPGPDigestCalculatorProvider
-      BcPublicKeyDataDecryptorFactory
-      BcPublicKeyKeyEncryptionMethodGenerator)))</pre></td></tr><tr><td class="docs"><h2>PGP Data Encoding</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Protocol for packets of message data.</p>
-</td><td class="codes"><pre class="brush: clojure">(defprotocol ^:no-doc MessagePacket
-  (unpack-message
-    [data opts]
-    &quot;Recursively unpacks a message packet and returns a vector of message maps
-    contained in the packet.
-    See `read-message` for options.&quot;))</pre></td></tr><tr><td class="docs"><p>Decodes a sequence of PGP objects from an input stream, unpacking each
-  object's data.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn- expand-content
-  [^InputStream input opts]
-  (-&gt;&gt;
-    (pgp/read-objects input)
-    (map #(unpack-message % opts))
-    flatten vec))</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with an armored data stream. Packets written to this
-  stream will be output in ASCII encoded Base64.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn armored-data-stream
-  ^OutputStream
-  [^OutputStream output]
-  (ArmoredOutputStream. output))</pre></td></tr><tr><td class="docs"><h2>Literal Data Packets</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Supported data formats which can be specified when building literal data
-  packets.</p>
-</td><td class="codes"><pre class="brush: clojure">(def data-formats
-  {:binary PGPLiteralData/BINARY
-   :text   PGPLiteralData/TEXT
-   :utf8   PGPLiteralData/UTF8})</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with a literal data generator, returning another
-  stream. Typically, the wrapped stream is a compressed data stream or
-  encrypted data stream.</p>
-
-<p>  Data written to the returned stream will write a literal data packet to the
-  wrapped output stream. If the data is longer than the buffer size, the packet
-  is written in chunks in a streaming fashion.</p>
-
-<p>  Options may be provided to customize the packet:</p>
-
-<ul>
-<li><code>:buffer-size</code> maximum number of bytes per chunk</li>
-<li><code>:format</code>      data format type</li>
-<li><code>:filename</code>    filename string for the data</li>
-<li><code>:mtime</code>       data modification time</li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defn literal-data-stream
-  ^OutputStream
-  [^OutputStream output &amp; opts]
-  (let [{:keys [buffer-size format filename ^Date mtime]
-         :or {buffer-size 4096
-              format      :binary
-              filename    PGPLiteralData/CONSOLE
-              mtime       (Date.)}}
-        (arg-map opts)]
-    (.open (PGPLiteralDataGenerator.)
-           output
-           (char (data-formats format))
-           (str filename)
-           mtime
-           (byte-array buffer-size))))</pre></td></tr><tr><td class="docs"><p>Read the literal data bytes from the packet.</p>
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
-  PGPLiteralData
-
-  (unpack-message
-    [packet opts]
-    (let [data (bytes/to-byte-array (.getInputStream packet))
-          format (tags/code-&gt;tag data-formats (char (.getFormat packet)))]
-      [{:format format
-        :filename (.getFileName packet)
-        :mtime (.getModificationTime packet)
-        :data (case format
-                (:text :utf8) (String. data)
-                data)}])))</pre></td></tr><tr><td class="docs"><h2>Compressed Data Packets</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with a compressed data generator, returning another
-  stream. Typically, literal data packets will be written to this stream, which
-  are compressed and written to an underlying encryption stream.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn compressed-data-stream
-  ^OutputStream
-  [^OutputStream output algorithm]
-  (.open (PGPCompressedDataGenerator.
-           (tags/compression-algorithm-code algorithm))
-         output))</pre></td></tr><tr><td class="docs"><p>Decompress the data contained in the packet.</p>
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
-  PGPCompressedData
-
-  (unpack-message
-    [packet opts]
-    (let [zip-algo (tags/compression-algorithm-tag
-                     (.getAlgorithm packet))]
-      (mapv #(assoc % :compress zip-algo)
-            (expand-content (.getDataStream packet) opts)))))</pre></td></tr><tr><td class="docs"><h2>Encrypted Data Packets</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Adds an encryption method to an encrypted data generator. Returns the updated
-  generator.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn- add-encryption-method!
-  ^PGPEncryptedDataGenerator
-  [^PGPEncryptedDataGenerator generator encryptor]
-  (cond
-    (string? encryptor)
-    (.addMethod generator
-      (BcPBEKeyEncryptionMethodGenerator.
-        (.toCharArray ^String encryptor)))
-    (pgp/public-key encryptor)
-    (.addMethod generator
-      (BcPublicKeyKeyEncryptionMethodGenerator.
-        (pgp/public-key encryptor)))
-    :else
-    (throw (IllegalArgumentException.
-             (str &quot;Don't know how to encrypt data with &quot; (pr-str encryptor)))))
-  generator)</pre></td></tr><tr><td class="docs"><p>Wraps an <code>OutputStream</code> with an encrypted data generator, returning another
-  stream. The data written to the stream will be encrypted with a symmetric
-  session key, which is then encrypted for each of the given public keys.</p>
-
-<p>  Typically, the data written to this will consist of compressed data packets.
-  If the data is longer than the buffer size, the packet is written in chunks
-  in a streaming fashion.</p>
-
-<p>  Options may be provided to customize the packet:</p>
-
-<ul>
-<li><code>:buffer-size</code>      maximum number of bytes per chunk</li>
-<li><code>:integrity-packet</code> whether to include a Modification Detection Code packet</li>
-<li><code>:random</code>           custom random number generator</li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defn encrypted-data-stream
-  ^OutputStream
-  [^OutputStream output cipher encryptors &amp; opts]
-  (let [encryptors (arg-coll encryptors)
-        {:keys [buffer-size integrity-packet random]
-         :or {buffer-size 4096
-              integrity-packet true}}
-        (arg-map opts)]
-    (when (empty? (remove nil? encryptors))
-      (throw (IllegalArgumentException.
-               &quot;Cannot encrypt data stream without encryptors.&quot;)))
-    (when (&lt; 1 (count (filter string? encryptors)))
-      (throw (IllegalArgumentException.
-               &quot;Only one passphrase encryptor is supported&quot;)))
-    (.open
-      ^PGPEncryptedDataGenerator
-      (reduce
-        add-encryption-method!
-        (PGPEncryptedDataGenerator.
-          (cond-&gt;
-            (BcPGPDataEncryptorBuilder.
-              (tags/symmetric-key-algorithm-code cipher))
-            integrity-packet (.setWithIntegrityPacket true)
-            random           (.setSecureRandom ^SecureRandom random)))
-        encryptors)
-      output
-      (byte-array buffer-size))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol MessagePacket
-
-  PGPEncryptedDataList
-
-  ;; Read through the list of encrypted session keys and attempt to find one
-  ;; which the decryptor will unlock. If none are found, the message is not
-  ;; decipherable and an exception is thrown.
-  (unpack-message
-    [packet opts]
-    (let [[^PGPEncryptedData object content]
-          (-&gt;&gt; (.getEncryptedDataObjects packet)
-               iterator-seq
-               (map #(when-let [ds (unpack-message % opts)]
-                       (vector % ds)))
-               (remove nil?)
-               first)]
-      (when-not content
-        (throw (IllegalArgumentException.
-                 (str &quot;Cannot decrypt &quot; (pr-str packet) &quot; with &quot; (pr-str opts)
-                      &quot; (no matching encrypted session key)&quot;))))
-      (when (and (.isIntegrityProtected object)
-                 (not (.verify object)))
-        (throw (IllegalStateException.
-                 (str &quot;Encrypted data object &quot; object
-                      &quot; failed integrity verification!&quot;))))
-      (let [mdc (.isIntegrityProtected object)]
-        (mapv #(assoc % :integrity-protected? mdc) content))))
-
-
-  PGPPBEEncryptedData
-
-  ;; If the decryptor is a string, try to use it to decrypt the passphrase
-  ;; protected session key.
-  (unpack-message
-    [packet opts]
-    (let [decryptor (:decryptor opts)]
-      (when (string? decryptor)
-        (let [decryptor-factory (BcPBEDataDecryptorFactory.
-                                  (.toCharArray ^String decryptor)
-                                  (BcPGPDigestCalculatorProvider.))
-              cipher (-&gt; packet
-                         (.getSymmetricAlgorithm decryptor-factory)
-                         tags/symmetric-key-algorithm-tag)]
-          (mapv #(assoc % :cipher cipher)
-                (-&gt; packet
-                    (.getDataStream decryptor-factory)
-                    (expand-content opts)))))))
-
-
-  PGPPublicKeyEncryptedData
-
-  ;; If the decryptor is callable, use it to find a private key matching the id
-  ;; on the data packet. Otherwise, use it directly as a private key. If the
-  ;; decryptor doesn't match the id, return nil.
-  (unpack-message
-    [packet opts]
-    (let [for-key (.getKeyID packet)
-          decryptor (:decryptor opts)]
-      (when-let [privkey (pgp/private-key
-                           (if (ifn? decryptor)
-                             (decryptor for-key)
-                             decryptor))]
-        (when (= for-key (pgp/key-id privkey))
-          (let [decryptor-factory (BcPublicKeyDataDecryptorFactory. privkey)
-                cipher (-&gt; packet
-                           (.getSymmetricAlgorithm decryptor-factory)
-                           tags/symmetric-key-algorithm-tag)]
-            (mapv #(assoc % :encrypted-for for-key :cipher cipher)
-                  (-&gt; packet
-                      (.getDataStream decryptor-factory)
-                      (expand-content opts)))))))))</pre></td></tr><tr><td class="docs"><h2>Constructing PGP Messages</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Wraps the given output stream with compression and encryption layers. The
-  data will decryptable by the corresponding decryptors. Does <em>not</em> close the
-  wrapped stream when it is closed.</p>
-
-<p>  Opts may contain:</p>
-
-<ul>
-<li><code>:buffer-size</code> maximum number of bytes per chunk</li>
-<li><code>:compress</code>    compress the cleartext with the given algorithm, if specified</li>
-<li><code>:cipher</code>      symmetric key algorithm to use if encryptors are provided</li>
-<li><code>:encryptors</code>  keys to encrypt the cipher session key with</li>
-<li><p><code>:armor</code>       whether to ascii-encode the output</p>
-
-<p>See <code>literal-data-stream</code> and <code>encrypted-data-stream</code> for more options.</p></li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defn message-output-stream
-  ^OutputStream
-  [^OutputStream output &amp; opts]
-  (let [{:keys [compress cipher encryptors armor]
-         :or {cipher :aes-256}
-         :as opts}
-        (arg-map opts)
-        encryptors (arg-coll encryptors)
-        wrap-with
-        (fn [streams wrapper &amp; args]
-          (conj streams (apply wrapper (last streams) args)))
-        streams
-        (-&gt;
-          (vector output)
-          (cond-&gt;
-            armor      (wrap-with armored-data-stream)
-            encryptors (wrap-with encrypted-data-stream cipher encryptors opts)
-            compress   (wrap-with compressed-data-stream compress))
-          (wrap-with literal-data-stream opts)
-          rest reverse)]
-    (proxy [FilterOutputStream] [(first streams)]
-      (close []
-        (dorun (map #(.close ^OutputStream %) streams))))))</pre></td></tr><tr><td class="docs"><p>Compresses, encrypts, and encodes the given data and returns an encoded
-  message packet. If the <code>:armor</code> option is set, the result will be an ASCII
-  string; otherwise, the function returns a byte array.</p>
-
-<p>  The message will readable by any of the corresponding decryptors.</p>
-
-<p>  See <code>message-output-stream</code> for options.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn package
-  [data &amp; opts]
-  (let [opts (arg-map opts)
-        buffer (ByteArrayOutputStream.)]
-    (with-open [^OutputStream stream
-                (message-output-stream buffer opts)]
-      (io/copy data stream))
-    (cond-&gt; (.toByteArray buffer)
-      (:armor opts) String.)))</pre></td></tr><tr><td class="docs"><p>Constructs a message packet enciphered for the given encryptors. See
-  <code>message-output-stream</code> for options.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn encrypt
-  [data encryptors &amp; opts]
-  (apply package data
-         :encryptors encryptors
-         opts))</pre></td></tr><tr><td class="docs"><h2>Reading PGP Messages</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Reads message packets from an input source and returns a sequence of message
-  maps. Each message contains keys similar to the options used to build them,
-  describing the type of compression used, cipher encrypted with, etc. The
-  message content is stored in the <code>:data</code> entry.</p>
-
-<p>  Opts may contain:</p>
-
-<ul>
-<li><code>:decryptor</code> secret to decipher the message encryption</li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defn read-messages
-  [input &amp; opts]
-  (-&gt;&gt;
-    input
-    bytes/to-input-stream
-    PGPUtil/getDecoderStream
-    pgp/read-objects
-    (map #(unpack-message % (arg-map opts)))
-    flatten))</pre></td></tr><tr><td class="docs"><p>Decrypts a message packet and attempts to decipher it with the given
-  decryptor. Returns the data of the first message directly.</p>
-
-<p>  See <code>read-messages</code> for options.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn decrypt
-  [input decryptor &amp; opts]
-  (-&gt;
-    (apply read-messages input
-           :decryptor decryptor
-           opts)
-    first :data))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#clj-pgp.tags" name="clj-pgp.tags"><h1 class="project-name">clj-pgp.tags</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Vars which map Cloure keywords to numeric BouncyCastle tag codes.</p>
-</td><td class="codes"><pre class="brush: clojure">(ns clj-pgp.tags
-  (:require
-    [clojure.string :as str])
-  (:import
-    (org.bouncycastle.bcpg
-      CompressionAlgorithmTags
-      HashAlgorithmTags
-      PublicKeyAlgorithmTags
-      SymmetricKeyAlgorithmTags)))</pre></td></tr><tr><td class="docs"><h2>Tag Functions</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Convert static 'tag' fields on the given class into a map of keywords to
-  numeric codes.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn- map-tags
-  [^Class tags]
-  (let [field-&gt;entry
-        (fn [^java.lang.reflect.Field f]
-          (vector (-&gt; (.getName f)
-                      (str/replace \_ \-)
-                      .toLowerCase
-                      keyword)
-                  (.getInt f nil)))]
-    (-&gt;&gt; (.getFields tags)
-         (map field-&gt;entry)
-         (into {}))))</pre></td></tr><tr><td class="docs"><p>Coerce a value into a numeric tag code. The argument may be a keyword or a
-  number. If the tag map does not contain the value, an exception is thrown.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn tag-&gt;code
-  ^Integer
-  [tag-name tags value]
-  (cond
-    (keyword? value)
-    (if-let [code (tags value)]
-      code
-      (throw (IllegalArgumentException.
-               (str &quot;Invalid &quot; tag-name &quot; name &quot; value))))
-    (number? value)
-    (if (some #{value} (vals tags))
-      value
-      (throw (IllegalArgumentException.
-               (str &quot;Invalid &quot; tag-name &quot; code &quot; value))))
-    :else
-    (throw (IllegalArgumentException.
-             (str &quot;Unknown &quot; tag-name &quot; identifier: &quot; (pr-str value))))))</pre></td></tr><tr><td class="docs"><p>Look up the keyword for a tag from the numeric code.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn code-&gt;tag
-  [tags code]
-  (some #(if (= (val %) code) (key %)) tags))</pre></td></tr><tr><td class="docs"><h2>Tag Definitions</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Defines a tag map and coersion function from fields on the given class.</p>
-</td><td class="codes"><pre class="brush: clojure">(defmacro ^:private deftags
-  [cls]
-  (let [tag-name (-&gt; (name cls)
-                     (as-&gt; s (subs s 0 (- (count s) 4)))
-                     (str/replace #&quot;([a-z])([A-Z])&quot; &quot;$1-$2&quot;)
-                     str/lower-case
-                     symbol)
-        tag-map (symbol (str tag-name &quot;-tags&quot;))]
-    `(do
-       (def ~tag-map
-         ~(str &quot;Map of &quot; tag-name &quot; tag codes.&quot;)
-         (map-tags ~cls))
-       (defn ~(symbol (str tag-name &quot;-code&quot;))
-         ~(str &quot;Validate and coerce the argument into a &quot; tag-name &quot; tag code.&quot;)
-         ^Integer
-         [~'value]
-         (tag-&gt;code ~(str tag-name) ~tag-map ~'value))
-       (defn ~(symbol (str tag-name &quot;-tag&quot;))
-         ~(str &quot;Validate and coerce the argument into a &quot; tag-name &quot; tag keyword.&quot;)
-         [~'value]
-         (code-&gt;tag ~tag-map (tag-&gt;code ~(str tag-name) ~tag-map ~'value))))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(deftags HashAlgorithmTags)
-(deftags CompressionAlgorithmTags)
-(deftags PublicKeyAlgorithmTags)
-(deftags SymmetricKeyAlgorithmTags)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/gdeer81/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a><div id="floating-toc"><ul><li class="floating-toc-li" id="floating-toc_clj-pgp.generate">clj-pgp.generate</li><li class="floating-toc-li" id="floating-toc_clj-pgp.util">clj-pgp.util</li><li class="floating-toc-li" id="floating-toc_clj-pgp.core">clj-pgp.core</li><li class="floating-toc-li" id="floating-toc_clj-pgp.keyring">clj-pgp.keyring</li><li class="floating-toc-li" id="floating-toc_clj-pgp.signature">clj-pgp.signature</li><li class="floating-toc-li" id="floating-toc_clj-pgp.message">clj-pgp.message</li><li class="floating-toc-li" id="floating-toc_clj-pgp.tags">clj-pgp.tags</li></ul></div></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
+    (.getEncoded this)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/gdeer81/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a><div id="floating-toc"><ul><li class="floating-toc-li" id="floating-toc_clj-pgp.tags">clj-pgp.tags</li><li class="floating-toc-li" id="floating-toc_clj-pgp.util">clj-pgp.util</li><li class="floating-toc-li" id="floating-toc_clj-pgp.message">clj-pgp.message</li><li class="floating-toc-li" id="floating-toc_clj-pgp.core">clj-pgp.core</li><li class="floating-toc-li" id="floating-toc_clj-pgp.signature">clj-pgp.signature</li><li class="floating-toc-li" id="floating-toc_clj-pgp.generate">clj-pgp.generate</li><li class="floating-toc-li" id="floating-toc_clj-pgp.keyring">clj-pgp.keyring</li></ul></div></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
 SyntaxHighlighter.all();
 
 // hackity hack
